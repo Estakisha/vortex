@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Magazine Rack</title>
+    
+    <!-- PDF.js for reading the files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    
+    <!-- StPageFlip for the magazine effect -->
+    <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f0f0;
+            overflow-x: hidden;
+        }
+
+        /* Bookshelf Styles */
+        #bookshelf {
+            padding: 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .book-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .book-item:hover {
+            transform: translateY(-5px);
+        }
+
+        .book-icon {
+            font-size: 40px;
+            color: #d32f2f;
+            margin-bottom: 10px;
+        }
+
+        .book-title {
+            font-size: 14px;
+            color: #333;
+            word-break: break-word;
+        }
+
+        /* Viewer Styles */
+        #viewer {
+            display: none; /* Hidden by default */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(50, 50, 50, 0.95);
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flip-book {
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            display: none; /* Hidden until loaded */
+        }
+
+        .page {
+            background-color: white;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .page canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Controls */
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            z-index: 101;
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #333;
+            color: white;
+            border: 1px solid white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        #close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: red;
+            border: none;
+            font-weight: bold;
+        }
+
+        #loading {
+            color: white;
+            font-size: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SECTION 1: The Bookshelf -->
+    <h1 style="text-align: center; color: #333;">Magazine Library</h1>
+    <div id="bookshelf">
+        <!-- JS will populate this -->
+        <p style="text-align: center; grid-column: 1/-1;">Loading library...</p>
+    </div>
+
+    <!-- SECTION 2: The Flipbook Viewer -->
+    <div id="viewer">
+        <button id="close-btn" onclick="closeViewer()">X Close</button>
+        
+        <div id="loading">Loading Magazine...</div>
+
+        <!-- The actual flipbook container -->
+        <div id="book" class="flip-book"></div>
+
+        <div id="controls">
+            <button onclick="book.flipPrev()">Previous</button>
+            <button onclick="book.flipNext()">Next</button>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION - EDIT THIS!
+        // ============================================
+        const CONFIG = {
+            username: 'estakisha', // e.g., 'john-doe'
+            repo: 'vortex',           // e.g., 'magazine-site'
+            folder: 'pdf',                    // Folder name where PDFs are stored
+            
+            // Fallback: If the automatic folder scanning fails (due to API limits),
+            // manually list your filenames here:
+            manualFileList: ['magazine_01.pdf', 'brochure.pdf']
+        };
+        // ============================================
+
+        // Initialize PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        let book = null; // StPageFlip instance
+        let pdfDoc = null;
+
+        // 1. Fetch File List
+        async function loadBookshelf() {
+            const shelf = document.getElementById('bookshelf');
+            shelf.innerHTML = ''; // Clear loading text
+
+            let files = [];
+            
+            // Try GitHub API first
+            try {
+                const response = await fetch(`https://api.github.com/repos/${CONFIG.username}/${CONFIG.repo}/contents/${CONFIG.folder}`);
+                if (!response.ok) throw new Error('API Limit or Repo not found');
+                const data = await response.json();
+                files = data.filter(f => f.name.endsWith('.pdf')).map(f => f.name);
+            } catch (error) {
+                console.warn("Could not auto-scan folder (likely API rate limit). Using manual list.", error);
+                files = CONFIG.manualFileList;
+            }
+
+            if (files.length === 0) {
+                shelf.innerHTML = `<p style="text-align:center; width:100%;">No PDFs found in the '${CONFIG.folder}' folder.</p>`;
+                return;
+            }
+
+            // Create Icons
+            files.forEach(filename => {
+                const div = document.createElement('div');
+                div.className = 'book-item';
+                div.innerHTML = `
+                    <div class="book-icon">📄</div>
+                    <div class="book-title">${filename}</div>
+                `;
+                div.onclick = () => openPDF(`${CONFIG.folder}/${filename}`);
+                shelf.appendChild(div);
+            });
+        }
+
+        // 2. Open PDF and Render Pages
+        async function openPDF(url) {
+            document.getElementById('viewer').style.display = 'flex';
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('book').innerHTML = ''; // Clear previous book
+            document.getElementById('book').style.display = 'none';
+
+            try {
+                const loadingTask = pdfjsLib.getDocument(url);
+                pdfDoc = await loadingTask.promise;
+                
+                const bookContainer = document.getElementById('book');
+                
+                // Render pages sequentially
+                for (let num = 1; num <= pdfDoc.numPages; num++) {
+                    const page = await pdfDoc.getPage(num);
+                    
+                    // Create wrapper div
+                    const pageDiv = document.createElement('div');
+                    pageDiv.className = 'page';
+                    
+                    // Create canvas
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    pageDiv.appendChild(canvas);
+                    bookContainer.appendChild(pageDiv);
+
+                    // Render to canvas
+                    // We render at a high scale for clarity, CSS handles the size
+                    const viewport = page.getViewport({ scale: 1.5 });
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    await page.render(renderContext).promise;
+                }
+
+                initFlipBook();
+
+            } catch (err) {
+                console.error(err);
+                alert("Error loading PDF: " + err.message);
+                closeViewer();
+            }
+        }
+
+        // 3. Initialize the Flipbook Animation
+        function initFlipBook() {
+            document.getElementById('loading').style.display = 'none';
+            const bookEl = document.getElementById('book');
+            bookEl.style.display = 'block';
+
+            // Calculate dimensions based on screen size
+            const isMobile = window.innerWidth < 768;
+            const width = isMobile ? window.innerWidth * 0.9 : 500;
+            const height = isMobile ? window.innerHeight * 0.6 : 700;
+
+            // Initialize StPageFlip
+            book = new St.PageFlip(bookEl, {
+                width: width,
+                height: height,
+                size: isMobile ? 'fixed' : 'stretch',
+                minWidth: 300,
+                maxWidth: 1000,
+                minHeight: 400,
+                maxHeight: 1200,
+                showCover: true,
+                maxShadowOpacity: 0.5
+            });
+
+            // Load the page elements we just created
+            book.loadFromHTML(document.querySelectorAll('.page'));
+        }
+
+        function closeViewer() {
+            document.getElementById('viewer').style.display = 'none';
+            if(book) book.destroy();
+        }
+
+        // Load the library on start
+        loadBookshelf();
+
+    </script>
+</body>
+</html>
