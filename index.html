@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vortex Magazine</title>
     
-    <!-- 1. PDF.js -->
+    <!-- 1. PDF.js (Matched Versions) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -51,7 +51,7 @@
 
         .cover-wrapper {
             width: 200px;
-            height: 280px; /* A4-ish ratio */
+            height: 280px;
             background: #2a2a2a;
             box-shadow: 0 10px 20px rgba(0,0,0,0.5);
             border-radius: 4px;
@@ -60,7 +60,7 @@
         }
 
         .cover-wrapper canvas {
-            width: 100%; height: 100%; object-fit: cover;
+            width: 100%; height: 100%; object-fit: contain;
         }
 
         /* --- VIEWER OVERLAY --- */
@@ -77,60 +77,68 @@
         }
 
         /* PROGRESS BAR */
-        #loading-bar-container {
+        #loading-ui {
+            text-align: center;
             width: 300px;
+        }
+        #loading-bar-container {
+            width: 100%;
             height: 4px;
             background: #333;
             border-radius: 2px;
-            margin-bottom: 20px;
-            display: none;
+            margin-top: 10px;
+            overflow: hidden;
         }
         #loading-bar {
             width: 0%;
             height: 100%;
             background: #00d2ff;
-            transition: width 0.1s;
+            transition: width 0.2s;
         }
         #loading-text {
-            color: #888;
+            color: #ccc;
             font-size: 14px;
-            margin-bottom: 10px;
         }
 
-        /* BOOK CONTAINER */
-        /* This is the wrapper that centers the book */
+        /* BOOK STAGE */
         .book-stage-wrapper {
             width: 100%;
-            height: 85vh; /* Leave room for UI */
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .flip-book {
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            display: none; 
+        }
+
+        /* Standardize Page Size */
+        .page {
+            background-color: white;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
         }
-
-        /* The actual flipbook element */
-        .flip-book {
-            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
-            display: none; /* Hidden until ready */
-        }
-
-        .page {
-            background-color: white;
-            overflow: hidden;
-        }
-
+        
         .page canvas {
             width: 100%;
             height: 100%;
-            object-fit: contain; /* Keeps text sharp and proportioned */
+            object-fit: contain;
         }
 
         /* CONTROLS */
         #close-btn {
             position: absolute; top: 20px; right: 20px;
-            background: transparent; border: 2px solid white;
-            color: white; width: 40px; height: 40px;
+            background: rgba(0,0,0,0.5); border: 1px solid white;
+            color: white; width: 44px; height: 44px;
             border-radius: 50%; cursor: pointer;
-            font-size: 20px; z-index: 2000;
+            font-size: 24px; z-index: 2000;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
         }
         #close-btn:hover { background: rgba(255,255,255,0.2); }
 
@@ -142,36 +150,32 @@
         <h1>MAGAZINE RACK</h1>
     </header>
 
-    <div id="shelf">
-        <!-- JS injects books here -->
-    </div>
+    <div id="shelf"></div>
 
     <!-- VIEWER -->
     <div id="viewer">
-        <button id="close-btn" onclick="closeViewer()">✕</button>
+        <button id="close-btn" onclick="closeViewer()">×</button>
         
-        <div id="loading-text">Initializing...</div>
-        <div id="loading-bar-container"><div id="loading-bar"></div></div>
+        <div id="loading-ui">
+            <div id="loading-text">Initializing...</div>
+            <div id="loading-bar-container"><div id="loading-bar"></div></div>
+        </div>
 
         <div class="book-stage-wrapper">
-            <!-- This Div gets destroyed and recreated every time -->
             <div id="book-source" class="flip-book"></div>
         </div>
     </div>
 
     <script>
-        // ============================================
         // CONFIGURATION
-        // ============================================
         const CONFIG = {
             folder: './pdf/', 
-            // Add your files here
-            files: ['Vortex01.pdf'] 
+            files: ['Vortex01.pdf'] // Ensure this filename matches exactly!
         };
 
-        // Global Variables
         let bookInstance = null;
-        let pdfDoc = null;
+        let resizeTimeout = null;
+        let currentPdfUrl = null;
 
         // 1. Initialize Shelf
         function initShelf() {
@@ -180,166 +184,202 @@
                 const item = document.createElement('div');
                 item.className = 'book-item';
                 item.innerHTML = `
-                    <div class="cover-wrapper" id="cover-${file}">
-                        <div style="padding:20px; color:#666;">Loading Cover...</div>
+                    <div class="cover-wrapper" id="cover-${file.replace('.', '-')}">
+                        <div style="padding:40px 10px; font-size:12px; color:#666;">Generating Preview...</div>
                     </div>
-                    <div style="margin-top:10px; color:#ccc;">${file.replace('.pdf', '')}</div>
+                    <div style="margin-top:15px; font-size:14px; color:#aaa; letter-spacing:1px;">
+                        ${file.replace('.pdf', '').toUpperCase()}
+                    </div>
                 `;
                 item.onclick = () => loadMagazine(file);
                 shelf.appendChild(item);
                 
-                // Load Thumbnail
-                renderThumbnail(file);
+                generateThumbnail(file);
             });
         }
 
-        // 2. Render Thumbnail (Page 1)
-        async function renderThumbnail(filename) {
+        // 2. Render High-Quality Thumbnail
+        async function generateThumbnail(filename) {
             try {
                 const url = CONFIG.folder + filename;
-                const pdf = await pdfjsLib.getDocument(url).promise;
+                const loadingTask = pdfjsLib.getDocument(url);
+                const pdf = await loadingTask.promise;
                 const page = await pdf.getPage(1);
                 
-                const viewport = page.getViewport({ scale: 0.8 });
                 const canvas = document.createElement('canvas');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
+                const context = canvas.getContext('2d');
                 
+                // Fetch basic viewport
+                const viewport = page.getViewport({ scale: 1 });
+                // Scale cover to width of 200px
+                const scale = 400 / viewport.width; // 2x density for retina
+                const scaledViewport = page.getViewport({ scale: scale });
+
+                canvas.width = scaledViewport.width;
+                canvas.height = scaledViewport.height;
+
                 await page.render({
-                    canvasContext: canvas.getContext('2d'),
-                    viewport: viewport
+                    canvasContext: context,
+                    viewport: scaledViewport
                 }).promise;
 
-                const wrapper = document.getElementById(`cover-${filename}`);
-                wrapper.innerHTML = '';
-                wrapper.appendChild(canvas);
+                const wrapperId = `cover-${filename.replace('.', '-')}`;
+                const wrapper = document.getElementById(wrapperId);
+                if(wrapper) {
+                    wrapper.innerHTML = '';
+                    wrapper.appendChild(canvas);
+                }
             } catch (e) {
                 console.error("Cover Error:", e);
+                const wrapperId = `cover-${filename.replace('.', '-')}`;
+                document.getElementById(wrapperId).innerHTML = '<div style="padding:20px; color:red;">PDF Not Found</div>';
             }
         }
 
         // 3. MAIN LOADER
         async function loadMagazine(filename) {
+            currentPdfUrl = CONFIG.folder + filename;
             const viewer = document.getElementById('viewer');
-            const loadText = document.getElementById('loading-text');
+            const loadUI = document.getElementById('loading-ui');
             const loadBar = document.getElementById('loading-bar');
-            const loadContainer = document.getElementById('loading-bar-container');
+            const loadText = document.getElementById('loading-text');
             const bookEl = document.getElementById('book-source');
 
-            // Reset UI
+            // Reset state
             viewer.style.display = 'flex';
             bookEl.style.display = 'none';
-            loadContainer.style.display = 'block';
+            loadUI.style.display = 'block';
             loadBar.style.width = '0%';
-
-            // Destroy previous instance to prevent "Disappearing" bug
+            
+            // Clean up previous instance
             if (bookInstance) {
                 bookInstance.destroy();
                 bookInstance = null;
             }
-            
-            // Re-create the HTML structure to ensure it's clean
-            bookEl.innerHTML = ''; 
+            bookEl.innerHTML = '';
 
             try {
-                const url = CONFIG.folder + filename;
-                loadText.innerText = "Downloading PDF...";
-                
-                pdfDoc = await pdfjsLib.getDocument(url).promise;
-                
+                const loadingTask = pdfjsLib.getDocument(currentPdfUrl);
+                const pdfDoc = await loadingTask.promise;
                 const totalPages = pdfDoc.numPages;
-                const pagesHTML = [];
 
-                // Determine dimensions based on screen
-                const isMobile = window.innerWidth < 768;
-                // Desktop: Book height = 80% screen. Width = aspect ratio.
-                const bookHeight = window.innerHeight * 0.8;
-                const bookWidth = isMobile ? window.innerWidth * 0.9 : (bookHeight * 0.707); // A4 ratio
+                // --- SIZE CALCULATION STRATEGY ---
+                // 1. Get screen size
+                const isMobile = window.innerWidth < 768; 
+                // 2. Get PDF Ratio from Page 1
+                const firstPage = await pdfDoc.getPage(1);
+                const originalViewport = firstPage.getViewport({ scale: 1 });
+                const aspectRatio = originalViewport.width / originalViewport.height;
 
-                // RENDER LOOP
+                // 3. Determine Book Dimensions based on screen
+                let bookHeight, bookWidth;
+
+                if (isMobile) {
+                    // Mobile: Portrait mode, Single Page
+                    bookWidth = window.innerWidth * 0.95; 
+                    bookHeight = bookWidth / aspectRatio;
+                    // Cap height if it exceeds screen
+                    if (bookHeight > window.innerHeight * 0.8) {
+                        bookHeight = window.innerHeight * 0.8;
+                        bookWidth = bookHeight * aspectRatio;
+                    }
+                } else {
+                    // Desktop: Landscape mode, Double Page
+                    // Max height 85% of screen
+                    bookHeight = window.innerHeight * 0.85;
+                    bookWidth = bookHeight * aspectRatio;
+                }
+
+                // --- RENDER PAGES ---
+                const pixelRatio = window.devicePixelRatio || 1;
+
                 for (let i = 1; i <= totalPages; i++) {
-                    // Update Progress Bar
-                    const percent = Math.round((i / totalPages) * 100);
-                    loadBar.style.width = percent + '%';
-                    loadText.innerText = `Rendering Page ${i} of ${totalPages}`;
+                    loadText.innerText = `Rendering Page ${i} / ${totalPages}`;
+                    loadBar.style.width = Math.round((i / totalPages) * 100) + '%';
 
-                    // Fetch Page
                     const page = await pdfDoc.getPage(i);
                     
-                    // Create Container
                     const div = document.createElement('div');
                     div.className = 'page';
-                    // Force CSS Size so Flipbook doesn't collapse
-                    div.style.width = bookWidth + 'px';
-                    div.style.height = bookHeight + 'px';
+                    div.style.width = Math.floor(bookWidth) + 'px';
+                    div.style.height = Math.floor(bookHeight) + 'px';
                     
-                    // Create Canvas
                     const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    // Math to fit PDF page exactly into our Div
+                    const unscaledViewport = page.getViewport({ scale: 1 });
                     
-                    // Scale Calculation:
-                    // We need the PDF page to fit exactly into our Div
-                    // scale = Required Width / PDF Native Width
-                    const viewportUnscaled = page.getViewport({ scale: 1 });
-                    const scaleFactor = bookWidth / viewportUnscaled.width;
-                    
-                    // Render at high res (x2) for quality, display at (x1)
-                    const viewport = page.getViewport({ scale: scaleFactor * 2 });
-                    
+                    // We render at high resolution (pixelRatio)
+                    // But we calculate scale based on the CSS size (bookWidth)
+                    const renderScale = (bookWidth / unscaledViewport.width) * pixelRatio;
+                    const viewport = page.getViewport({ scale: renderScale });
+
                     canvas.width = viewport.width;
                     canvas.height = viewport.height;
                     
-                    // Wait for render (This is what takes time, but ensures no blanks)
+                    // Force CSS to match logic size (not physical pixel size)
+                    canvas.style.width = '100%';
+                    canvas.style.height = '100%';
+
                     await page.render({
-                        canvasContext: canvas.getContext('2d'),
+                        canvasContext: ctx,
                         viewport: viewport
                     }).promise;
 
                     div.appendChild(canvas);
                     bookEl.appendChild(div);
-                    
-                    // Optional: Small delay to let UI update (prevents freezing)
-                    await new Promise(r => setTimeout(r, 10));
+
+                    // Small breathing room for UI
+                    if(i % 3 === 0) await new Promise(r => setTimeout(r, 0));
                 }
 
-                // Hide Loader
-                loadContainer.style.display = 'none';
-                loadText.innerText = "";
+                // --- INIT FLIPBOOK ---
+                loadUI.style.display = 'none';
                 bookEl.style.display = 'block';
 
-                // INIT FLIPBOOK
                 bookInstance = new St.PageFlip(bookEl, {
-                    width: bookWidth,
-                    height: bookHeight,
-                    size: 'fixed', // This is key for stability
-                    minWidth: 200,
-                    maxWidth: 1000,
-                    minHeight: 300,
-                    maxHeight: 1200,
+                    width: Math.floor(bookWidth),
+                    height: Math.floor(bookHeight),
+                    size: 'fixed', // Fixed prevents jitter
                     showCover: true,
                     maxShadowOpacity: 0.5,
-                    autoSize: true
+                    usePortrait: isMobile, // Single page on mobile
+                    startPage: 0
                 });
 
                 bookInstance.loadFromHTML(document.querySelectorAll('.page'));
 
             } catch (err) {
-                alert("Error: " + err.message);
+                console.error(err);
+                alert("Error loading PDF: " + err.message);
                 closeViewer();
             }
         }
 
         function closeViewer() {
-            const viewer = document.getElementById('viewer');
-            viewer.style.display = 'none';
-            
-            // HARD RESET: Completely destroy the book instance
+            document.getElementById('viewer').style.display = 'none';
             if (bookInstance) {
                 bookInstance.destroy();
                 bookInstance = null;
             }
-            // Clean DOM memory
             document.getElementById('book-source').innerHTML = '';
         }
+
+        // Handle Window Resize (Debounced)
+        window.addEventListener('resize', () => {
+            if(document.getElementById('viewer').style.display === 'flex') {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    // Ideally prompts user to reload or automatically reloads
+                    // Reloading automatically can be heavy, but it ensures layout fits
+                     if(currentPdfUrl) {
+                         const currentFile = currentPdfUrl.split('/').pop();
+                         loadMagazine(currentFile);
+                     }
+                }, 500);
+            }
+        });
 
         initShelf();
     </script>
