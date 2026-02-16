@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vortex Magazine</title>
+    <title>Vortex</title>
     
     <!-- 1. PDF.js (Must match worker version) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -135,16 +135,16 @@
         // CONFIGURATION - Check these carefully!
         // ========================================================
         const CONFIG = {
-            // 1. Your Repo Name (Must match URL exactly)
+            // 1.  Repo Name 
             repoName: 'vortex', 
             
-            // 2. The folder inside the repo (Case Sensitive!)
+            // 2. The folder inside the repo 
             folderName: 'pdf', 
             
-            // 3. The File Names (Case Sensitive! 'Vortex01.pdf' != 'vortex01.pdf')
+            // 3. The File Names 
             files: [
                 'Vortex01.pdf' 
-                // Add 'Issue2.pdf', etc here later
+                // Add more here  later
             ]
         };
         // ========================================================
@@ -158,7 +158,7 @@
                 return `./${CONFIG.folderName}/${filename}`;
             } else {
                 // Force the correct path for GitHub Pages
-                // Result: /vortex/pdf/Vortex01.pdf
+                // EX Result: /vortex/pdf/Vortex01.pdf
                 return `/${CONFIG.repoName}/${CONFIG.folderName}/${filename}`;
             }
         }
@@ -236,7 +236,7 @@
                 console.error(`Error loading cover for ${filename}:`, error);
                 spinner.innerHTML = "Not Found";
                 spinner.style.color = "red";
-                // If this happens, your filename or folder name is wrong
+                // If this happens, filename or folder name is wrong
             }
         }
 
@@ -317,3 +317,4 @@
     </script>
 </body>
 </html>
+
