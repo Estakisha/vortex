@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vortex Magazine</title>
+    <title>Vortex Archive</title>
     
     <!-- 1. PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -15,119 +15,248 @@
     <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
 
     <style>
-        body { margin: 0; background: #1a1a1a; color: white; font-family: sans-serif; }
-        
-        /* --- SHELF --- */
-        #shelf { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; padding: 50px; }
-        
-        .book-item { width: 180px; text-align: center; cursor: pointer; }
-        
-        .cover-box {
-            width: 100%; height: 260px; background: #333;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            margin-bottom: 10px; border-radius: 4px; overflow: hidden;
-            display: flex; align-items: center; justify-content: center;
-            transition: transform 0.2s;
-        }
-        .cover-box:hover { transform: translateY(-5px); }
-        .cover-box canvas { width: 100%; height: 100%; object-fit: cover; }
-
-        /* --- VIEWER OVERLAY --- */
-        #viewer {
-            display: none; /* Hidden by default */
-            position: fixed; top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            background: rgba(10, 10, 10, 0.98);
-            z-index: 999;
-            flex-direction: column;
-            align-items: center; justify-content: center;
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --accent-color: #ffffff;
+            --shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        /* The container for the book */
-        .book-stage {
-            /* Keep this relative so the canvas can position inside */
+        body {
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* HEADER */
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #333;
+        }
+
+        h1 { margin: 0; font-weight: 300; font-size: 2rem; }
+
+        /* SHELF GRID */
+        #shelf {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 40px;
+            padding: 40px 8%;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* CARD DESIGN */
+        .book-card {
+            background: transparent;
+            perspective: 1000px;
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .book-card:hover { transform: translateY(-10px); }
+
+        .cover-wrapper {
             position: relative;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
-        }
-
-        /* CRITICAL: Pages must have dimensions for the library to work */
-        .page {
-            background-color: white;
+            width: 100%;
+            aspect-ratio: 1 / 1.414; /* Standard A4 Ratio */
+            background: var(--card-bg);
+            border-radius: 4px;
+            box-shadow: var(--shadow);
             overflow: hidden;
-            /* Default dimensions, JS will override for mobile */
-            width: 400px; 
-            height: 600px; 
         }
 
-        .page canvas {
+        /* The canvas inside the grid */
+        .cover-canvas {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: cover;
+            opacity: 0;
+            transition: opacity 0.5s ease;
         }
+
+        .book-title {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            text-align: center;
+            color: #aaa;
+            letter-spacing: 1px;
+        }
+
+        /* SPINNER (Pure CSS) */
+        .spinner {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px; height: 30px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent-color);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        /* VIEWER OVERLAY */
+        #viewer {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.95); /* Darker backdrop */
+            z-index: 2000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #viewer.active { opacity: 1; }
+
+        /* FLIPBOOK CONTAINER */
+        #book-stage {
+            /* Shadow behind the open book */
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            transition: transform 0.3s;
+        }
+
+        .page { background-color: white; overflow: hidden; }
+        .page canvas { width: 100%; height: 100%; object-fit: contain; }
+
+        /* CONTROLS */
+        .control-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: none;
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            transition: background 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .control-btn:hover { background: rgba(255,255,255,0.3); }
+        #prev-btn { left: 20px; }
+        #next-btn { right: 20px; }
 
         #close-btn {
-            position: absolute; top: 20px; right: 20px;
-            background: none; border: 2px solid white;
-            color: white; padding: 10px 20px; cursor: pointer;
-            z-index: 1000; font-weight: bold;
+            position: absolute;
+            top: 30px; right: 30px;
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 2001;
+            transition: transform 0.2s;
+        }
+        #close-btn:hover { transform: rotate(90deg); }
+
+        #loader-overlay {
+            position: absolute;
+            color: white;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            display: none;
         }
 
-        #loading-txt { font-size: 18px; color: #aaa; margin-bottom: 20px; }
+        /* Responsive */
+        @media (max-width: 768px) {
+            #shelf { padding: 20px; gap: 20px; grid-template-columns: repeat(2, 1fr); }
+            header { padding: 20px; font-size: 0.8rem; }
+            .control-btn { display: none; /* Hide arrows on mobile, rely on swipe */ }
+        }
     </style>
 </head>
 <body>
 
-    <h1 style="text-align: center; margin-top:30px;">VORTEX LIBRARY</h1>
+    <header>
+        <h1>VORTEX</h1>
+    </header>
 
-    <!-- 1. The Shelf -->
-    <div id="shelf"></div>
+    <div id="shelf">
+        <!-- Javascript will inject books here -->
+    </div>
 
-    <!-- 2. The Viewer -->
+    <!-- Viewer -->
     <div id="viewer">
-        <button id="close-btn" onclick="closeViewer()">CLOSE X</button>
-        <div id="loading-txt">Loading...</div>
-        <!-- The Flipbook Container -->
-        <div id="book" class="book-stage"></div>
+        <button id="close-btn" onclick="closeViewer()">✕</button>
+        
+        <!-- Navigation Arrows -->
+        <button id="prev-btn" class="control-btn" onclick="bookInstance.flipPrev()">❮</button>
+        <button id="next-btn" class="control-btn" onclick="bookInstance.flipNext()">❯</button>
+
+        <div id="loader-overlay">
+            <div class="spinner"></div>
+            <div style="margin-top: 40px">OPENING...</div>
+        </div>
+
+        <div id="book-stage"></div>
     </div>
 
     <script>
-        // ===================================
-        // CONFIG
-        // ===================================
+        // ============================================
+        // CONFIGURATION
+        // ============================================
         const CONFIG = {
+            // Folder Path (keep the ./pdf/ structure)
             folder: './pdf/', 
-            files: ['Vortex01.pdf'] // Exact filename
+            
+            // File List (Exact filenames, Case Sensitive!)
+            files: [
+                'Vortex01.pdf',
+                // 'Issue2.pdf', 
+            ]
         };
 
+        // Global Variable for the Flipbook
         let bookInstance = null;
 
-        // 1. Init Shelf
+        // 1. Initialize Shelf
         function initShelf() {
             const shelf = document.getElementById('shelf');
-            CONFIG.files.forEach(file => {
-                const div = document.createElement('div');
-                div.className = 'book-item';
-                div.innerHTML = `
-                    <div class="cover-box" id="cover-${file}">
-                        <span>Loading...</span>
+            
+            CONFIG.files.forEach(filename => {
+                const card = document.createElement('div');
+                card.className = 'book-card';
+                card.innerHTML = `
+                    <div class="cover-wrapper" id="wrap-${filename}">
+                        <div class="spinner"></div>
+                        <canvas class="cover-canvas"></canvas>
                     </div>
-                    <div>${file.replace('.pdf', '')}</div>
+                    <div class="book-title">${filename.replace('.pdf', '')}</div>
                 `;
-                div.onclick = () => openBook(file);
-                shelf.appendChild(div);
-                loadCover(file);
+                
+                card.onclick = () => openReader(filename);
+                shelf.appendChild(card);
+
+                // Load the cover image
+                generateCover(filename, card.querySelector('canvas'), card.querySelector('.spinner'));
             });
         }
 
-        // 2. Load Cover
-        async function loadCover(filename) {
+        // 2. Generate High-Quality Cover
+        async function generateCover(filename, canvas, spinner) {
             const url = CONFIG.folder + filename;
             try {
                 const pdf = await pdfjsLib.getDocument(url).promise;
                 const page = await pdf.getPage(1);
                 
-                const viewport = page.getViewport({ scale: 1 });
-                const canvas = document.createElement('canvas');
+                // Get viewport at 1.5 scale for sharp thumbnail
+                const viewport = page.getViewport({ scale: 1.5 });
+                
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
                 
@@ -136,30 +265,30 @@
                     viewport: viewport
                 }).promise;
 
-                const box = document.getElementById(`cover-${filename}`);
-                box.innerHTML = '';
-                box.appendChild(canvas);
-            } catch (e) {
-                console.error(e);
+                // Reveal
+                spinner.style.display = 'none';
+                canvas.style.opacity = '1';
+
+            } catch (err) {
+                // Silent fail UI update
+                spinner.style.borderTopColor = 'red';
+                console.warn("Cover load failed:", filename);
             }
         }
 
-        // 3. OPEN BOOK (The Fix)
-        async function openBook(filename) {
+        // 3. Open the Viewer
+        async function openReader(filename) {
             const viewer = document.getElementById('viewer');
-            const stage = document.getElementById('book');
-            const txt = document.getElementById('loading-txt');
+            const stage = document.getElementById('book-stage');
+            const loader = document.getElementById('loader-overlay');
             
-            // Show Viewer immediately
+            // Animation In
             viewer.style.display = 'flex';
+            requestAnimationFrame(() => viewer.classList.add('active'));
+            
+            loader.style.display = 'block';
             stage.innerHTML = ''; // Clear old pages
-            txt.style.display = 'block';
-            txt.innerText = "Downloading PDF...";
-
-            // Determine Size based on screen
-            const isMobile = window.innerWidth < 768;
-            const width = isMobile ? 300 : 450;
-            const height = isMobile ? 420 : 640;
+            stage.style.opacity = '0'; // Hide until ready
 
             if (bookInstance) { bookInstance.destroy(); bookInstance = null; }
 
@@ -167,23 +296,32 @@
                 const url = CONFIG.folder + filename;
                 const pdf = await pdfjsLib.getDocument(url).promise;
 
-                // Loop Pages
+                // Determine Book Size based on window height
+                // Leave 100px padding for UI
+                const isMobile = window.innerWidth < 768;
+                const availableHeight = window.innerHeight * 0.85;
+                const baseWidth = isMobile ? window.innerWidth * 0.9 : (availableHeight * 0.7); 
+                const baseHeight = availableHeight;
+
+                // Render Pages
                 for (let i = 1; i <= pdf.numPages; i++) {
-                    txt.innerText = `Rendering Page ${i} / ${pdf.numPages}`;
                     const page = await pdf.getPage(i);
-                    
-                    // Create Page Div
                     const div = document.createElement('div');
                     div.className = 'page';
                     
-                    // FORCE CSS DIMENSIONS (Critical for Flipbook)
-                    div.style.width = width + 'px';
-                    div.style.height = height + 'px';
+                    // Set explicit page size for Flipbook Engine
+                    // On desktop, width is per-page (so book is 2x width)
+                    // On mobile, width is single page view
+                    const pgWidth = isMobile ? baseWidth : (baseWidth / 2);
                     
-                    // Render Canvas
+                    div.style.width = pgWidth + 'px';
+                    div.style.height = baseHeight + 'px';
+
                     const canvas = document.createElement('canvas');
-                    // Scale match the div size
-                    const viewport = page.getViewport({ scale: width / page.getViewport({scale:1}).width });
+                    
+                    // Render at high resolution (2.0) for zooming clarity
+                    // But draw it into the smaller canvas container
+                    const viewport = page.getViewport({ scale: 2 });
                     
                     canvas.width = viewport.width;
                     canvas.height = viewport.height;
@@ -192,36 +330,48 @@
                         canvasContext: canvas.getContext('2d'),
                         viewport: viewport
                     }).promise;
-
+                    
                     div.appendChild(canvas);
                     stage.appendChild(div);
                 }
 
-                txt.style.display = 'none';
+                loader.style.display = 'none';
+                stage.style.opacity = '1';
 
-                // Init Flipbook with explicit dimensions
+                // Start Flipbook
                 bookInstance = new St.PageFlip(stage, {
-                    width: width,
-                    height: height,
-                    size: 'fixed', // Forces the size we set above
+                    width: isMobile ? baseWidth : (baseWidth / 2),
+                    height: baseHeight,
+                    size: 'fixed',
+                    minWidth: 200,
+                    maxWidth: 1000,
+                    minHeight: 300,
+                    maxHeight: 1200,
                     showCover: true,
-                    maxShadowOpacity: 0.5
+                    maxShadowOpacity: 0.5,
+                    autoSize: true,
+                    mobileScrollSupport: true // Enables swipe on mobile
                 });
 
                 bookInstance.loadFromHTML(document.querySelectorAll('.page'));
 
             } catch (err) {
-                alert("Error: " + err.message);
                 console.error(err);
-                closeViewer();
+                closeViewer(); // Close on error silently
             }
         }
 
         function closeViewer() {
-            document.getElementById('viewer').style.display = 'none';
+            const viewer = document.getElementById('viewer');
+            viewer.classList.remove('active');
+            setTimeout(() => {
+                viewer.style.display = 'none';
+            }, 300); // Wait for fade out
         }
 
+        // Start
         initShelf();
+
     </script>
 </body>
 </html>
