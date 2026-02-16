@@ -3,246 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vortex</title>
+    <title>Vortex Magazine</title>
     
-    <!-- 1. LOAD LIBRARIES (Matching Versions) -->
+    <!-- 1. PDF.js (Must match worker version) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
-        // Set worker explicitly
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     
-    <!-- Flipbook Library -->
+    <!-- 2. Flipbook Engine -->
     <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
 
     <style>
-        body { margin: 0; font-family: sans-serif; background: #333; color: white; }
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            overflow-x: hidden;
+        }
 
-        /* --- SHELF --- */
+        h1 { text-align: center; font-weight: 300; letter-spacing: 2px; margin-top: 40px; }
+
+        /* --- SHELF (Grid) --- */
         #bookshelf {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 30px;
-            padding: 50px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 40px;
+            padding: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
         }
 
         .book-item {
-            width: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .book-item:hover { transform: translateY(-10px); }
+
+        .cover-container {
+            width: 100%;
+            aspect-ratio: 1 / 1.414; /* A4 Ratio */
+            background: #333;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* The Canvas for the thumbnail */
+        canvas.cover-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0; /* Hidden until loaded */
+            transition: opacity 0.5s;
+        }
+
+        .loading-spinner {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px; color: #888;
+        }
+
+        .book-title {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #ccc;
             text-align: center;
         }
 
-        .cover-canvas {
-            width: 100%;
-            height: auto; /* Maintains aspect ratio */
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-            background: white;
-            transition: transform 0.2s;
-            border-radius: 4px;
-        }
-
-        .cover-canvas:hover { transform: scale(1.05); }
-
-        /* --- VIEWER (Overlay) --- */
+        /* --- VIEWER (Full Screen) --- */
         #viewer {
             display: none; /* Hidden by default */
             position: fixed;
             top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 999;
+            width: 100vw; height: 100vh;
+            background: rgba(15, 15, 15, 0.98);
+            z-index: 1000;
             flex-direction: column;
             align-items: center;
             justify-content: center;
         }
 
-        /* The Container for the FlipBook */
-        #book-container {
-            /* These dimensions are critical for initialization */
-            width: 500px; 
-            height: 700px;
+        #book-stage {
+            /* Width/Height handled by JS, but max constraints here */
             max-width: 90vw;
-            max-height: 80vh;
+            max-height: 85vh;
         }
 
-        /* Individual Pages */
-        .page {
+        .page-wrapper {
             background-color: white;
-            padding: 0;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
-            overflow: hidden; /* Hide scrollbars */
-        }
-
-        /* Canvas inside page must fit exactly */
-        .page canvas {
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain;
+            overflow: hidden; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
         }
 
         #close-btn {
-            position: absolute; top: 20px; right: 20px;
-            padding: 10px 20px; background: red; color: white;
-            border: none; cursor: pointer; font-size: 16px;
-            z-index: 1000;
+            position: absolute; top: 30px; right: 30px;
+            background: transparent; border: 2px solid white;
+            color: white; border-radius: 50%;
+            width: 40px; height: 40px;
+            font-size: 18px; cursor: pointer;
+            z-index: 1001;
+            transition: background 0.2s;
         }
+        #close-btn:hover { background: rgba(255,255,255,0.2); }
 
-        #loading-msg { font-size: 20px; margin-bottom: 20px; color: #aaa; }
     </style>
 </head>
 <body>
 
-    <h1 style="text-align:center;">Vortex</h1>
+    <h1>VORTEX LIBRARY</h1>
     
     <div id="bookshelf">
-        <!-- Javascript will put books here -->
-        <p>Loading Library...</p>
+        <!-- Javascript will inject books here -->
+        <p style="text-align: center; grid-column: 1/-1;">Initializing Library...</p>
     </div>
 
     <!-- Viewer Overlay -->
     <div id="viewer">
-        <button id="close-btn" onclick="closeViewer()">CLOSE X</button>
-        <div id="loading-msg">Opening Magazine...</div>
-        
-        <!-- The flipbook mounts here -->
-        <div id="book-container"></div>
+        <button id="close-btn" onclick="closeViewer()">✕</button>
+        <div id="book-stage"></div>
     </div>
 
     <script>
-        // ===========================================
-        // CONFIG: LIST YOUR FILES HERE
-        // ===========================================
-        const myBooks = [
-            'Vortex01.pdf' 
-        ];
-        
-        // This handles the path automatically. 
-        // It assumes "pdf" folder is in the same place as "index.html"
-        const FOLDER_PATH = './pdf/'; 
+        // ========================================================
+        // CONFIGURATION - Check these carefully!
+        // ========================================================
+        const CONFIG = {
+            // 1. Your Repo Name (Must match URL exactly)
+            repoName: 'vortex', 
+            
+            // 2. The folder inside the repo (Case Sensitive!)
+            folderName: 'pdf', 
+            
+            // 3. The File Names (Case Sensitive! 'Vortex01.pdf' != 'vortex01.pdf')
+            files: [
+                'Vortex01.pdf' 
+                // Add 'Issue2.pdf', etc here later
+            ]
+        };
+        // ========================================================
 
-        let pageFlip = null;
-
-        // 1. STARTUP: Generate the Shelf
-        async function initShelf() {
-            const shelf = document.getElementById('bookshelf');
-            shelf.innerHTML = ''; // Clear loading text
-
-            if(myBooks.length === 0) {
-                shelf.innerHTML = "No books configured in JS.";
-                return;
+        // Helper to construct the correct URL for GitHub Pages
+        function getPdfUrl(filename) {
+            // Check if we are on localhost or github.io
+            const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+            
+            if (isLocal) {
+                return `./${CONFIG.folderName}/${filename}`;
+            } else {
+                // Force the correct path for GitHub Pages
+                // Result: /vortex/pdf/Vortex01.pdf
+                return `/${CONFIG.repoName}/${CONFIG.folderName}/${filename}`;
             }
+        }
 
-            for (const filename of myBooks) {
-                // Create HTML structure
+        let bookFlip = null; // Store flipbook instance
+
+        // --------------------------------------------------------
+        // 1. Initialize Bookshelf (Lazy Loading)
+        // --------------------------------------------------------
+        function initShelf() {
+            const shelf = document.getElementById('bookshelf');
+            shelf.innerHTML = '';
+
+            // Lazy Load Observer
+            const observer = new IntersectionObserver((entries, obs) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        loadCover(entry.target);
+                        obs.unobserve(entry.target);
+                    }
+                });
+            }, { rootMargin: "200px" });
+
+            CONFIG.files.forEach(filename => {
                 const item = document.createElement('div');
                 item.className = 'book-item';
+                item.onclick = () => openReader(filename);
                 
-                // Create Canvas for Cover
-                const canvas = document.createElement('canvas');
-                canvas.className = 'cover-canvas';
-                item.appendChild(canvas);
-
-                // Title
-                const title = document.createElement('div');
-                title.innerText = filename;
-                title.style.marginTop = "10px";
-                item.appendChild(title);
-
-                // Click event
-                item.onclick = () => openMagazine(filename);
+                item.innerHTML = `
+                    <div class="cover-container" data-file="${filename}">
+                        <div class="loading-spinner">Loading...</div>
+                        <canvas class="cover-canvas"></canvas>
+                    </div>
+                    <div class="book-title">${filename.replace('.pdf', '')}</div>
+                `;
+                
                 shelf.appendChild(item);
-
-                // Render the cover (Page 1) immediately
-                renderCover(filename, canvas);
-            }
+                
+                // Observe the container inside
+                observer.observe(item.querySelector('.cover-container'));
+            });
         }
 
-        // 2. HELPER: Render just page 1 for the shelf
-        async function renderCover(filename, canvas) {
+        // --------------------------------------------------------
+        // 2. Render Cover (Page 1)
+        // --------------------------------------------------------
+        async function loadCover(container) {
+            const filename = container.getAttribute('data-file');
+            const url = getPdfUrl(filename);
+            const canvas = container.querySelector('canvas');
+            const spinner = container.querySelector('.loading-spinner');
+
             try {
-                const url = FOLDER_PATH + filename;
+                // Load PDF
                 const loadingTask = pdfjsLib.getDocument(url);
                 const pdf = await loadingTask.promise;
+                
+                // Get Page 1
                 const page = await pdf.getPage(1);
-                
-                const viewport = page.getViewport({ scale: 0.5 }); // Small scale for thumb
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
+                const viewport = page.getViewport({ scale: 1.0 }); // Thumbnail scale
 
-                const context = canvas.getContext('2d');
-                await page.render({ canvasContext: context, viewport: viewport }).promise;
-            } catch (error) {
-                console.error("Error loading cover for " + filename, error);
-                // Draw a red X if failed
+                // Set Canvas Dimensions
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
                 const ctx = canvas.getContext('2d');
-                canvas.width = 150; canvas.height = 200;
-                ctx.fillStyle = "#333"; ctx.fillRect(0,0,150,200);
-                ctx.fillStyle = "red"; ctx.font = "20px Arial";
-                ctx.fillText("PDF Error", 30, 100);
+
+                // Render
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                // Show canvas, hide spinner
+                canvas.style.opacity = '1';
+                spinner.style.display = 'none';
+
+            } catch (error) {
+                console.error(`Error loading cover for ${filename}:`, error);
+                spinner.innerHTML = "Not Found";
+                spinner.style.color = "red";
+                // If this happens, your filename or folder name is wrong
             }
         }
 
-        // 3. MAIN: Open the Full Magazine
-        async function openMagazine(filename) {
+        // --------------------------------------------------------
+        // 3. Open Flipbook Reader
+        // --------------------------------------------------------
+        async function openReader(filename) {
             const viewer = document.getElementById('viewer');
-            const container = document.getElementById('book-container');
-            const msg = document.getElementById('loading-msg');
-
-            // Show Viewer, reset container
-            viewer.style.display = 'flex';
-            msg.style.display = 'block';
-            container.innerHTML = ''; 
+            const stage = document.getElementById('book-stage');
             
-            // Clean up old instance
-            if (pageFlip) {
-                pageFlip.destroy();
-                pageFlip = null;
-            }
+            viewer.style.display = 'flex';
+            stage.innerHTML = '<div style="color:white;">Rendering Magazine...</div>';
+            
+            if (bookFlip) bookFlip.destroy(); // Clean previous book
+
+            const url = getPdfUrl(filename);
 
             try {
-                const url = FOLDER_PATH + filename;
-                console.log("Fetching PDF from:", url);
-                
-                const loadingTask = pdfjsLib.getDocument(url);
-                const pdf = await loadingTask.promise;
-                console.log("PDF Loaded, Pages:", pdf.numPages);
+                const pdf = await pdfjsLib.getDocument(url).promise;
+                stage.innerHTML = ''; // Clear loading text
 
-                // Create div elements for every page
+                // Loop through all pages
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     
-                    // 1. Create Page Container
-                    const pageDiv = document.createElement('div');
-                    pageDiv.className = 'page';
-                    
-                    // 2. Create Canvas
-                    const canvas = document.createElement('canvas');
-                    pageDiv.appendChild(canvas);
-                    container.appendChild(pageDiv);
+                    // Create Wrapper
+                    const div = document.createElement('div');
+                    div.className = 'page-wrapper';
+                    stage.appendChild(div);
 
-                    // 3. Render High Quality PDF to Canvas
-                    // We use scale 1.5 or 2.0 for sharp text
-                    const viewport = page.getViewport({ scale: 1.5 });
+                    // Create Canvas
+                    const canvas = document.createElement('canvas');
+                    // Scale 1.5 or 2 for clear text
+                    const viewport = page.getViewport({ scale: 1.5 }); 
                     canvas.width = viewport.width;
                     canvas.height = viewport.height;
+                    canvas.style.width = "100%";
+                    canvas.style.height = "100%";
                     
+                    div.appendChild(canvas);
+
+                    // Render
                     const ctx = canvas.getContext('2d');
                     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-                    
-                    // Update Loading Text
-                    msg.innerText = `Rendering Page ${i} of ${pdf.numPages}...`;
                 }
 
-                // 4. Initialize FlipBook AFTER DOM is ready
-                msg.style.display = 'none';
+                // Initialize StPageFlip
+                const isMobile = window.innerWidth < 768;
                 
-                // Determine screen size for book size
-                const isMobile = window.innerWidth < 600;
-
-                pageFlip = new St.PageFlip(container, {
-                    width: isMobile ? 300 : 500, // Base width
-                    height: isMobile ? 420 : 700, // Base height
+                bookFlip = new St.PageFlip(stage, {
+                    width: isMobile ? 350 : 550, // Base page width
+                    height: isMobile ? 500 : 750, // Base page height
                     size: isMobile ? 'fixed' : 'stretch',
                     minWidth: 300,
                     maxWidth: 1000,
@@ -252,11 +298,11 @@
                     maxShadowOpacity: 0.5
                 });
 
-                pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+                bookFlip.loadFromHTML(document.querySelectorAll('.page-wrapper'));
 
-            } catch (error) {
-                console.error(error);
-                alert("Error: " + error.message + "\nCheck console (F12) for details.");
+            } catch (err) {
+                console.error(err);
+                alert("Could not load PDF. \n\nCheck that '" + filename + "' is spelled exactly right (Case Sensitive!)");
                 closeViewer();
             }
         }
@@ -265,7 +311,7 @@
             document.getElementById('viewer').style.display = 'none';
         }
 
-        // Start
+        // Start App
         initShelf();
 
     </script>
